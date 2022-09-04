@@ -14,11 +14,12 @@ import (
 )
 
 type CanastaVariables struct {
-	Id            string
-	WikiName      string
-	DomainName    string
-	AdminPassword string
-	AdminName     string
+	Id             string
+	WikiName       string
+	DomainName     string
+	AdminPassword  string
+	RandomPassword bool
+	AdminName      string
 }
 
 // CloneStackRepo accept the orchestrator from the cli and pass the corresponding reopository link
