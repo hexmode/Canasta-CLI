@@ -8,14 +8,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/canasta"
-	"github.com/CanastaWiki/Canasta-CLI-Go/internal/logging"
+	"github.com/CanastaWiki/Canasta-CLI-Go/internal/config"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/orchestrators"
 )
 
 var (
 	pwd      string
 	err      error
-	instance logging.Installation
+	instance config.Installation
 )
 
 func NewCmdCreate() *cobra.Command {
@@ -40,7 +40,7 @@ func NewCmdCreate() *cobra.Command {
 	return deleteCmd
 }
 
-func Delete(instance logging.Installation) error {
+func Delete(instance config.Installation) error {
 	fmt.Println("Deleting Canasta")
 	var err error
 
@@ -54,7 +54,7 @@ func Delete(instance logging.Installation) error {
 	orchestrators.Delete(instance.Path, instance.Orchestrator)
 
 	//Deleting installation details from conf.json
-	if err = logging.Delete(instance.Id); err != nil {
+	if err = config.Delete(instance.Id); err != nil {
 		return err
 	}
 	fmt.Println("Deleted Canasta")

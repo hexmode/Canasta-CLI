@@ -3,11 +3,11 @@ package create
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/canasta"
+	"github.com/CanastaWiki/Canasta-CLI-Go/internal/config"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/logging"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/mediawiki"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/orchestrators"
@@ -25,12 +25,6 @@ func NewCmdCreate() *cobra.Command {
 		Use:   "create",
 		Short: "Create a Canasta installation",
 		Long:  "Creates a Canasta installation using an orchestrator of your choice.",
-		PreRun: func(cmd *cobra.Command, args []string) {
-			_, err := exec.LookPath("docker-compose")
-			if err != nil {
-				logging.Fatal(fmt.Errorf("docker-compose should be installed! (%s)", err))
-			}
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if canastaInfo, err = mediawiki.PromptUser(canastaInfo); err != nil {
 				logging.Fatal(err)
@@ -69,7 +63,7 @@ func createCanasta(canastaInfo canasta.CanastaVariables, pwd, path, orchestrator
 	if _, err := mediawiki.Install(path, orchestrator, canastaInfo); err != nil {
 		return err
 	}
-	if err := logging.Add(logging.Installation{Id: canastaInfo.Id, Path: path, Orchestrator: orchestrator}); err != nil {
+	if err := config.Add(config.Installation{Id: canastaInfo.Id, Path: path, Orchestrator: orchestrator}); err != nil {
 		return err
 	}
 	if err := orchestrators.StopAndStart(path, orchestrator); err != nil {

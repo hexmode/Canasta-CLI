@@ -13,6 +13,7 @@ import (
 	startCmd "github.com/CanastaWiki/Canasta-CLI-Go/cmd/start"
 	stopCmd "github.com/CanastaWiki/Canasta-CLI-Go/cmd/stop"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/logging"
+	"github.com/CanastaWiki/Canasta-CLI-Go/internal/orchestrators"
 
 	"github.com/spf13/cobra"
 )
@@ -39,7 +40,7 @@ func Execute() {
 }
 
 func init() {
-
+	orchestrators.CheckDependencies()
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 
 	rootCmd.AddCommand(createCmd.NewCmdCreate())
@@ -53,5 +54,5 @@ func init() {
 	rootCmd.AddCommand(maintenanceCmd.NewCmdCreate())
 	rootCmd.AddCommand(skinCmd.NewCmdCreate())
 	rootCmd.AddCommand(extensionCmd.NewCmdCreate())
-  rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
