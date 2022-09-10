@@ -70,7 +70,7 @@ func NewCmdCreate() *cobra.Command {
 
 // importCanasta accepts all the keyword arguments and create a installation of the latest Canasta.
 func createCanasta(canastaInfo canasta.CanastaVariables, pwd, path, orchestrator string) error {
-	if _, err := logging.GetDetails(canastaInfo.Id); err == nil {
+	if _, err := config.GetDetails(canastaInfo.Id); err == nil {
 		log.Fatal(fmt.Errorf("Canasta installation with the ID already exist!"))
 	}
 	if err := canasta.CloneStackRepo(orchestrator, canastaInfo.Id, &path); err != nil {
