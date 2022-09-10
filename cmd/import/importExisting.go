@@ -7,6 +7,7 @@ import (
 
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/canasta"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/config"
+	"github.com/CanastaWiki/Canasta-CLI-Go/internal/logging"
 	"github.com/CanastaWiki/Canasta-CLI-Go/internal/orchestrators"
 	"github.com/spf13/cobra"
 )
@@ -57,8 +58,15 @@ func NewCmdCreate() *cobra.Command {
 
 // importCanasta copies LocalSettings.php and databasedump to create canasta from a previous mediawiki installation
 func importCanasta(pwd, canastaId, domainName, path, orchestrator, databasePath, localSettingsPath, envPath string) error {
-	canasta.CloneStackRepo(orchestrator, canastaId, &path)
-	canasta.CopyEnv(envPath, domainName, path, pwd)
+	if _, err := config.GetDetails(canastaId); err == nil {
+		log.Fatal(fmt.Errorf("Canasta installation with the ID already exist!"))
+	}
+	if err := canasta.CloneStackRepo(orchestrator, canastaId, &path); err != nil {
+		return err
+	}
+	if err := canasta.CopyEnv(envPath, domainName, path, pwd); err != nil {
+		return err
+	}
 	if err := canasta.CopyDatabase(databasePath, path, pwd); err != nil {
 		return err
 	}
