@@ -64,6 +64,7 @@ func NewCmdCreate() *cobra.Command {
 	createCmd.Flags().StringVarP(&canastaInfo.AdminName, "admin", "a", "", "Initial wiki admin username")
 	createCmd.Flags().StringVarP(&canastaInfo.AdminPassword, "password", "s", "", "Initial wiki admin password")
 	createCmd.Flags().BoolVarP(&keepConfig, "keep-config", "k", false, "Keep the config files on installation failure")
+	createCmd.Flags().BoolVarP(&canastaInfo.RandomPassword, "random", "r", false, "Use a random password for the wiki admin password")
 	return createCmd
 }
 

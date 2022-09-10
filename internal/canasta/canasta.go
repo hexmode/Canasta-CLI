@@ -18,6 +18,7 @@ type CanastaVariables struct {
 	WikiName      string
 	DomainName    string
 	AdminPassword string
+	RandomPassword bool
 	AdminName     string
 }
 

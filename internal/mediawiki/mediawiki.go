@@ -27,7 +27,7 @@ func PromptUser(canastaInfo canasta.CanastaVariables) (canasta.CanastaVariables,
 	if err != nil {
 		return canastaInfo, err
 	}
-	canastaInfo.AdminName, canastaInfo.AdminPassword, err = promptUserPassword(canastaInfo.AdminName, canastaInfo.AdminPassword, "admin name", "admin password")
+	canastaInfo.AdminName, canastaInfo.AdminPassword, err = promptUserPassword(canastaInfo.AdminName, canastaInfo.AdminPassword, "admin name", "admin password", canastaInfo.RandomPassword)
 	if err != nil {
 		return canastaInfo, err
 	}
@@ -45,7 +45,8 @@ func Install(path, orchestrator string, canastaInfo canasta.CanastaVariables) (c
 	if err != nil {
 		return canastaInfo, fmt.Errorf(output)
 	}
-	if canastaInfo.AdminPassword == "" {
+
+	if canastaInfo.RandomPassword == true || canastaInfo.AdminPassword == "" {
 		canastaInfo.AdminPassword, err = password.Generate(12, 2, 4, false, true)
 		if err != nil {
 			return canastaInfo, err
@@ -76,13 +77,16 @@ func prompt(value, prompt string) (string, error) {
 	return input, nil
 }
 
-func promptUserPassword(userValue, passwordValue, userPrompt, passwordPrompt string) (string, string, error) {
+func promptUserPassword(userValue, passwordValue, userPrompt, passwordPrompt string, random bool) (string, string, error) {
 	username, err := prompt(userValue, userPrompt)
 	if err != nil {
 		return "", "", err
 	}
 	if passwordValue != "" {
 		return "", "", err
+	}
+	if random {
+		return username, "", nil
 	}
 	fmt.Printf("Enter the %s (Press Enter to autogenerate the password): \n", passwordPrompt)
 	pass, err := term.ReadPassword(0)
