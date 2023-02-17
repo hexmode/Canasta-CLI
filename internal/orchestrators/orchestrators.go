@@ -19,7 +19,7 @@ func GetRepoLink(orchestrator string) string {
 	var repo string
 	switch orchestrator {
 	case "docker-compose":
-		repo = "https://github.com/CanastaWiki/Canasta-DockerCompose.git"
+		repo = "https://github.com/hexmode/Canasta-DockerCompose.git"
 	default:
 		logging.Fatal(fmt.Errorf("orchestrator: %s is not available", orchestrator))
 	}
