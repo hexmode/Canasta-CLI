@@ -65,6 +65,43 @@
     - orchestrator | default('compose') == 'compose'
     - _mem_check.rc | default(0) != 0
 
+# --- Compose-only storage preflight ---
+# Canasta images are ~2.3 GB; with database volumes, logs, and build
+# cache, container storage can exhaust a small root partition. Warn
+# early so the operator can configure storage on a larger volume.
+- name: Get Docker root directory (Compose only)
+  ansible.builtin.shell:
+    cmd: docker info 2>/dev/null | awk -F': ' '/Docker Root Dir/{print $2}'
+  register: _docker_root_dir
+  changed_when: false
+  failed_when: false
+  when: orchestrator | default('compose') == 'compose'
+
+- name: Check available disk space on Docker storage (Compose only)
+  ansible.builtin.shell:
+    cmd: df --output=avail "$(docker info 2>/dev/null | awk -F': ' '/Docker Root Dir/{print $2}')" 2>/dev/null | tail -1
+  register: _docker_storage_avail
+  changed_when: false
+  failed_when: false
+  when:
+    - orchestrator | default('compose') == 'compose'
+    - _docker_root_dir.stdout | trim | length > 0
+
+- name: Warn if Docker storage has less than 20 GB free (Compose only)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: Container storage at {{ _docker_root_dir.stdout }}
+      has only {{ (_docker_storage_avail.stdout | trim | int / (1024*1024)) | round(1) }}
+      GB free (recommended minimum: 20 GB). Canasta images are ~2.3 GB
+      and database/migration operations need additional space. Configure
+      container storage on a larger volume; see the setup guide for
+      storage configuration options.
+  when:
+    - orchestrator | default('compose') == 'compose'
+    - _docker_storage_avail.stdout is defined
+    - _docker_storage_avail.stdout | trim | length > 0
+    - (_docker_storage_avail.stdout | trim | int) < 20 * 1024 * 1024
+
 # --- Step 1: Validate inputs ---
 # Run input validation BEFORE the K8s preflight + Argo CD install
 # below. A bad --id, an instance ID that already exists, or any other
