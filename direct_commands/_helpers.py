@@ -360,9 +360,10 @@ def _run_compose(inst_id, inst, action_args, include_sidecars=False):
     devmode = inst.get("devMode", False)
     file_args = _compose_file_args(path, host, devmode, include_sidecars)
     compose_cmd = _resolve_compose_cmd(inst)
+    profile_args = _compose_profile_args(inst)
 
     if _is_localhost(host):
-        cmd = compose_cmd + file_args + action_args
+        cmd = compose_cmd + file_args + profile_args + action_args
         try:
             return subprocess.call(cmd, cwd=path)
         except OSError as e:
@@ -370,10 +371,11 @@ def _run_compose(inst_id, inst, action_args, include_sidecars=False):
             return 1
 
     file_str = " ".join(file_args)
+    profile_str = " ".join(profile_args)
     action_str = " ".join(action_args)
     compose_str = " ".join(compose_cmd)
-    remote_cmd = "cd %s && %s %s %s" % (
-        _shell_quote(path), compose_str, file_str, action_str,
+    remote_cmd = "cd %s && %s %s %s %s" % (
+        _shell_quote(path), compose_str, file_str, profile_str, action_str,
     )
     # SSH does not pass env; propagate DOCKER_HOST like _ssh_run does so a
     # rootless socket on the target is honored.
@@ -969,6 +971,34 @@ def _unquote(value):
     return value
 
 
+def _is_podman_compose(inst):
+    """Check if the instance uses podman-compose instead of docker compose."""
+    cmd = _resolve_compose_cmd(inst)
+    return "podman-compose" in cmd
+
+
+def _compose_profile_args(inst):
+    """Return --profile flags for the active COMPOSE_PROFILES.
+
+    podman-compose ignores COMPOSE_PROFILES from .env, so we must pass
+    --profile flags explicitly. Returns a list like
+    ["--profile", "internal-db", "--profile", "varnish"].
+    """
+    if not _is_podman_compose(inst):
+        return []
+    path = inst.get("path", "")
+    if not path:
+        return []
+    raw = _read_env(path, "COMPOSE_PROFILES")
+    if not raw:
+        return []
+    profiles = [p.strip() for p in raw.split(",") if p.strip()]
+    args = []
+    for p in profiles:
+        args += ["--profile", p]
+    return args
+
+
 def _resolve_compose_cmd(inst):
     """Resolve the compose command for an instance.
 
@@ -1067,7 +1097,12 @@ def _check_running(instance_id, path, orchestrator, host, docker_host=None,
 def _check_running_compose(path, host, docker_host=None, compose_cmd=None):
     if compose_cmd is None:
         compose_cmd = ["docker", "compose"]
-    ps_cmd = compose_cmd + ["ps", "-q", "web"]
+    # Use the native runtime's ps with compose labels (podman-compose
+    # ps doesn't accept service names as positional args).
+    runtime = "podman" if "podman" in compose_cmd[0] else "docker"
+    ps_cmd = [runtime, "ps", "--filter",
+              "label=com.docker.compose.service=web",
+              "--format", "{{.ID}}"]
     if _is_localhost(host):
         try:
             result = subprocess.run(
@@ -1283,8 +1318,11 @@ def _gather_instance_info(inst_id, inst):
         return _gather_k8s(inst_id, path, host)
 
     compose_str = " ".join(compose_cmd)
-    compose_ps = "cd %(p)s && %(c)s ps -q web 2>/dev/null || true" % {
-        "p": qpath, "c": compose_str,
+    # Use native runtime ps with compose labels (podman-compose ps
+    # doesn't accept service names as positional args).
+    runtime = "podman" if "podman" in compose_cmd[0] else "docker"
+    compose_ps = "cd %(p)s && %(r)s ps --filter label=com.docker.compose.service=web --format '{{.ID}}' 2>/dev/null || true" % {
+        "p": qpath, "r": runtime,
     }
     if docker_host:
         compose_ps = "DOCKER_HOST=%s %s" % (_shell_quote(docker_host), compose_ps)
