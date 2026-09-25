@@ -153,4 +153,7 @@ def cmd_rebuild(args):
     if rc != 0:
         _helpers._dump_compose_failure(inst, include_sidecars=has_sidecars)
         return rc
-    return _helpers._wait_web_ready(inst_id, inst)
+    rc = _helpers._wait_web_ready(inst_id, inst)
+    if rc == 0:
+        _helpers._rootless_operator_chown(inst)
+    return rc
