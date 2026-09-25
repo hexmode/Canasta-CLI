@@ -490,7 +490,7 @@ def _gitops_gitcrypt_locked(path, host, ssh_key=None):
     return rc == 0 and out.strip() == "00474954435259505400"
 
 
-def _gitops_gitcrypt_mode(path, host, ssh_key=None):
+def _gitops_gitcrypt_mode(path, host):
     """Return 'gpg' if the repo has git-crypt GPG recipient keys, else 'symmetric'."""
     if _helpers._is_localhost(host):
         import glob as _glob
@@ -520,9 +520,7 @@ def cmd_gitops_status(args):
     if orchestrator not in ("kubernetes", "k8s") and _gitops_gitcrypt_locked(
         path, host, getattr(args, "ssh_key", None)
     ):
-        _gc_mode = _gitops_gitcrypt_mode(
-            path, host, getattr(args, "ssh_key", None)
-        )
+        _gc_mode = _gitops_gitcrypt_mode(path, host)
         if _gc_mode == "gpg":
             _gc_hint = (
                 "Run 'git-crypt unlock' in %s (needs the GPG key / forwarded "
