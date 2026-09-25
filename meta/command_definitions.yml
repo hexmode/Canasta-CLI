@@ -2684,6 +2684,16 @@ commands:
           symmetric key for unlocking encrypted vars on other hosts.
           K8s does not use git-crypt; the parameter only affects
           the SSH key path there.
+      - name: git_crypt_gpg_user
+        type: string
+        description: >-
+          Compose only. GPG recipient (email or key id) to encrypt the
+          git-crypt key to, enabling GPG-based unlock instead of a shared
+          symmetric key file. When set, gitops initializes git-crypt with
+          `git-crypt add-gpg-user` and later `gitops pull`/`push` unlock via
+          `git-crypt unlock` (using a forwarded GPG agent). The symmetric
+          git-crypt key is not exported, but --key is still required for the
+          SSH deploy key (`<key>.ssh`).
       - name: ssh_key
         type: path
         description: >-
@@ -2779,12 +2789,12 @@ commands:
         description: "Git repository URL"
       - name: key
         type: path
-        required: true
         description: >-
-          Path basename for the gitops keys, same as `gitops init`.
-          On Compose, `<key>` is the git-crypt symmetric key. On K8s,
-          only `<key>.ssh` (the SSH deploy key) is used — git-crypt
-          is not part of the K8s gitops flow.
+          Compose: path to the git-crypt symmetric key file exported by
+          `canasta gitops init`. It unlocks any git-crypt repo; it may be
+          omitted for a repo with GPG recipients, which is then unlocked
+          through a forwarded GPG agent. Kubernetes: required, the basename
+          of the SSH deploy key (<key>.ssh).
       - name: ssh_key
         type: path
         description: >-
@@ -2882,6 +2892,12 @@ commands:
           set, git runs with GIT_SSH_COMMAND="ssh -i <ssh-key> ...".
           Omit to keep the default: ssh-agent forwarding on Compose,
           or the staged deploy key on Kubernetes.
+      - name: key
+        type: path
+        description: >-
+          Compose only. Path to the git-crypt symmetric key, used to unlock
+          the checkout if it is locked. Without it, a repo with GPG
+          recipients is unlocked through a forwarded GPG agent.
 
   - name: gitops_pull
     description: "Pull latest configuration from the git repository"
@@ -2905,6 +2921,12 @@ commands:
           set, git runs with GIT_SSH_COMMAND="ssh -i <ssh-key> ...".
           Omit to keep the default: ssh-agent forwarding on Compose,
           or the staged deploy key on Kubernetes.
+      - name: key
+        type: path
+        description: >-
+          Compose only. Path to the git-crypt symmetric key, used to unlock
+          the checkout if it is locked. Without it, a repo with GPG
+          recipients is unlocked through a forwarded GPG agent.
 
   - name: gitops_status
     description: "Show gitops status for the instance"

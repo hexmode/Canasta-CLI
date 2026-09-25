@@ -108,23 +108,60 @@
   environment: "{{ gitops_git_env }}"
   changed_when: true
 
-# --- Step 3: Copy key to remote and unlock git-crypt ---
+# --- Step 3: Unlock git-crypt ---
+# --key (the symmetric key) unlocks any git-crypt repo, including one that
+# also has GPG recipients. Without it, a repo with GPG recipients is unlocked
+# through a forwarded GPG agent.
+- name: Detect git-crypt GPG recipients in cloned repo
+  ansible.builtin.shell:
+    cmd: "ls .git-crypt/keys/default/0/*.gpg >/dev/null 2>&1 && echo gpg || echo symmetric"
+    chdir: "{{ _join_tmpdir.path }}"
+    executable: /bin/bash
+  register: _join_gitcrypt_mode
+  changed_when: false
+  failed_when: false
+
+- name: Choose the git-crypt unlock method
+  ansible.builtin.set_fact:
+    _join_unlock: >-
+      {{ 'key' if (key | default('', true) | length > 0)
+         else ('gpg' if _join_gitcrypt_mode.stdout | default('') == 'gpg'
+               else 'none') }}
+
+- name: Fail if symmetric git-crypt repo but no --key provided
+  ansible.builtin.fail:
+    msg: >-
+      This gitops repo uses a symmetric git-crypt key, but --key was not
+      provided. Re-run with --key /path/to/gitops.key (the symmetric key
+      file exported by `canasta gitops init`).
+  when: _join_unlock == 'none'
+
+- name: Unlock git-crypt via GPG agent
+  ansible.builtin.command:
+    cmd: "git-crypt unlock"
+    chdir: "{{ _join_tmpdir.path }}"
+  changed_when: true
+  when: _join_unlock == 'gpg'
+
 - name: Copy git-crypt key from controller to remote
   ansible.builtin.copy:
     src: "{{ key }}"
     dest: "/tmp/canasta-gitcrypt-key"
     mode: "0600"
+  when: _join_unlock == 'key'
 
 - name: Unlock git-crypt with provided key
   ansible.builtin.command:
     cmd: "git-crypt unlock /tmp/canasta-gitcrypt-key"
     chdir: "{{ _join_tmpdir.path }}"
   changed_when: true
+  when: _join_unlock == 'key'
 
 - name: Remove temp key from remote
   ansible.builtin.file:
     path: "/tmp/canasta-gitcrypt-key"
     state: absent
+  when: _join_unlock == 'key'
 
 # --- Step 4: Validate host name not already in config ---
 - name: Read hosts.yaml from cloned repo

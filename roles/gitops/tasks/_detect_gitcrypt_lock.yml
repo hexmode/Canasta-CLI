@@ -1,36 +1,105 @@
 ---
-# Fail fast when git-crypt is locked in this checkout.
+# Detect whether git-crypt is locked in this checkout by inspecting the
+# git-crypt header of hosts/hosts.yaml. If locked, try to unlock before
+# failing: with --key when given (the symmetric key unlocks any git-crypt
+# repo, including one that also has GPG recipients), otherwise through a
+# forwarded GPG agent when the repo has GPG recipients.
 #
-# hosts/hosts.yaml is git-crypt encrypted; a checkout cloned/reset/restored
-# without `git-crypt unlock` has it on disk as ciphertext (\0GITCRYPT\0
-# header). Parsing it (from_yaml) or catting it then crashes on the non-UTF-8
-# bytes, so detect the header with od (no decode) and stop with a clear
-# message. A no-op on decrypted or non-git-crypt checkouts.
-#
-# Requires: instance_path.
+# Requires: instance_path. Optional: key (symmetric key path on the
+# controller).
 
 - name: Read hosts.yaml git-crypt header
   ansible.builtin.shell:
     cmd: "set -o pipefail; head -c 10 hosts/hosts.yaml 2>/dev/null | od -An -tx1 | tr -d ' \\n'"
-  args:
     chdir: "{{ instance_path }}"
     executable: /bin/bash
   register: _gitcrypt_lock_hdr
   changed_when: false
   failed_when: false
 
-- name: Fail when git-crypt is locked
-  ansible.builtin.fail:
-    msg: |-
-      git-crypt is locked in this checkout: hosts/hosts.yaml is still
-      encrypted (ciphertext) on disk, so gitops cannot read the host topology.
-      This happens when the repo was cloned, reset, or restored without
-      running `git-crypt unlock` (the encrypt/decrypt filters and key live in
-      .git and are not part of a clone). Unlock with the instance's git-crypt
-      key and retry:
-
-        git-crypt unlock /path/to/gitops.key
-
-      Verify with: head -c 20 hosts/hosts.yaml | od -An -c
-      (it should read as plaintext YAML, not the GITCRYPT header).
+- name: Try to unlock a locked checkout
   when: _gitcrypt_lock_hdr.stdout | default('') == '00474954435259505400'
+  block:
+    - name: Detect git-crypt GPG recipients
+      ansible.builtin.shell:
+        cmd: "ls .git-crypt/keys/default/0/*.gpg >/dev/null 2>&1 && echo gpg || echo symmetric"
+        chdir: "{{ instance_path }}"
+        executable: /bin/bash
+      register: _gitcrypt_mode
+      changed_when: false
+      failed_when: false
+
+    # --key names a file on the controller; git-crypt runs on the target.
+    - name: Unlock with the symmetric key
+      when: key | default('', true) | length > 0
+      block:
+        - name: Create a temp path for the git-crypt key on the target
+          ansible.builtin.tempfile:
+            state: file
+            prefix: canasta-gitcrypt-
+          register: _gitcrypt_tmpkey
+
+        - name: Copy the git-crypt key to the target
+          ansible.builtin.copy:
+            src: "{{ key }}"
+            dest: "{{ _gitcrypt_tmpkey.path }}"
+            mode: "0600"
+
+        - name: Run git-crypt unlock with the key
+          ansible.builtin.command:
+            argv: [timeout, "60", git-crypt, unlock, "{{ _gitcrypt_tmpkey.path }}"]
+            chdir: "{{ instance_path }}"
+          register: _gitcrypt_unlock_sym
+          changed_when: _gitcrypt_unlock_sym.rc == 0
+          failed_when: false
+      always:
+        - name: Remove the temp git-crypt key from the target
+          ansible.builtin.file:
+            path: "{{ _gitcrypt_tmpkey.path }}"
+            state: absent
+          when: _gitcrypt_tmpkey.path is defined
+
+    - name: Run git-crypt unlock through the GPG agent
+      ansible.builtin.command:
+        argv: [timeout, "60", git-crypt, unlock]
+        chdir: "{{ instance_path }}"
+      register: _gitcrypt_unlock_gpg
+      changed_when: _gitcrypt_unlock_gpg.rc == 0
+      failed_when: false
+      when:
+        - key | default('', true) | length == 0
+        - _gitcrypt_mode.stdout | default('') == 'gpg'
+
+    - name: Read hosts.yaml git-crypt header after the unlock attempt
+      ansible.builtin.shell:
+        cmd: "set -o pipefail; head -c 10 hosts/hosts.yaml 2>/dev/null | od -An -tx1 | tr -d ' \\n'"
+        chdir: "{{ instance_path }}"
+        executable: /bin/bash
+      register: _gitcrypt_relock_hdr
+      changed_when: false
+      failed_when: false
+
+    - name: Fail when git-crypt could not be unlocked
+      ansible.builtin.fail:
+        msg: >-
+          git-crypt is locked in this checkout: hosts/hosts.yaml is still
+          encrypted on disk, so gitops cannot read the host topology.
+          {% if key | default('', true) | length > 0 %}
+          Unlocking with --key {{ key }} failed:
+          {{ (_gitcrypt_unlock_sym.stderr | default('') | trim) or (_gitcrypt_unlock_sym.msg | default('')) }}
+          {% elif _gitcrypt_mode.stdout | default('') == 'gpg' %}
+          Unlocking through the GPG agent failed:
+          {{ (_gitcrypt_unlock_gpg.stderr | default('') | trim) or (_gitcrypt_unlock_gpg.msg | default('')) }}.
+          The target needs the private key, or a forwarded agent (e.g.
+          RemoteForward to its S.gpg-agent); or pass --key with the
+          symmetric key file.
+          {% else %}
+          The repo has no GPG recipients, so pass --key /path/to/gitops.key
+          (the symmetric key exported by `canasta gitops init`).
+          {% endif %}
+      # A failed unlock (e.g. the wrong key) can leave hosts.yaml missing
+      # rather than encrypted, so its exit status counts too.
+      when: >-
+        _gitcrypt_relock_hdr.stdout | default('') == '00474954435259505400'
+        or _gitcrypt_unlock_sym.rc | default(0) != 0
+        or _gitcrypt_unlock_gpg.rc | default(0) != 0
