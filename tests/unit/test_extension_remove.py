@@ -157,3 +157,66 @@ class TestCommandsRegistered:
             assert os.path.isfile(os.path.join(
                 REPO_ROOT, "playbooks", playbooks[cmd])), (
                 "%s playbook must exist" % cmd)
+
+
+def _named(tasks, prefix):
+    return [t for t in _walk(tasks) if t.get("name", "").startswith(prefix)]
+
+
+class TestDisableEveryScope:
+    """Deleting the code breaks every wiki that still loads it."""
+
+    def test_reads_global_and_every_wiki(self):
+        reads = [t for t in _walk(_load(REMOVE))
+                 if (t.get("canasta_settings_yaml") or {}).get("state") == "read"]
+        assert reads
+        assert "wiki_ids" in reads[0]["loop"]
+        assert "['']" in reads[0]["loop"], "the global scope must be included"
+
+    def test_disables_in_each_scope_that_enables_them(self):
+        disables = [t for t in _walk(_load(REMOVE))
+                    if (t.get("canasta_settings_yaml") or {}).get("state")
+                    == "disable"]
+        assert disables
+        assert disables[0]["loop"] == "{{ _remove_settings.results }}"
+
+    def test_only_present_items_are_disabled(self):
+        # An absent name may be a bundled item the operator still uses.
+        disable = next(t for t in _walk(_load(REMOVE))
+                       if (t.get("canasta_settings_yaml") or {}).get("state")
+                       == "disable")
+        assert "_remove_present" in disable["canasta_settings_yaml"]["names"]
+
+    def test_presence_is_known_before_disabling(self):
+        names = [t.get("name", "") for t in _walk(_load(REMOVE))]
+        probe = names.index("Check which {{ _item_type }} are present")
+        disable = names.index(
+            "Disable removed {{ _item_type }} wherever they are enabled")
+        assert probe < disable
+
+    def test_remove_has_no_wiki_parameter(self):
+        data = yaml.safe_load(open(DEFS))
+        for c in data["commands"]:
+            if c["name"] in ("extension_remove", "skin_remove"):
+                assert "wiki" not in {p["name"] for p in c["parameters"]}
+
+
+class TestScopedStaging:
+    def test_never_stages_whole_directories(self):
+        for cmd in _cmds(_load(REMOVE)):
+            if "add -A" in cmd:
+                assert "config\n" not in cmd and not cmd.rstrip().endswith(
+                    "config"), "staging all of config/ sweeps in unrelated edits"
+                assert "_item_dir | quote }}\n" not in cmd
+
+    def test_removed_dirs_are_unstaged_per_item(self):
+        stage = _named(_load(REMOVE), "Stage removed")
+        assert stage and stage[0]["loop"] == "{{ _remove_present }}"
+        assert "--ignore-unmatch" in _cmds(stage)[0]
+
+
+class TestOrphanCleanup:
+    def test_orphan_module_metadata_is_deleted(self):
+        orphan = _named(_load(REMOVE), "Delete orphan module metadata")
+        assert orphan
+        assert "/.git/modules/" in orphan[0]["ansible.builtin.file"]["path"]

@@ -153,7 +153,7 @@
       ansible.builtin.command:
         cmd: >-
           git -C {{ instance_path | quote }} -c commit.gpgsign=false commit
-          -m 'Switch {{ _item_type }} {{ item.name }} to {{ item.branch }}'
+          -m {{ ('Switch ' ~ _item_type ~ ' ' ~ item.name ~ ' to ' ~ item.branch) | quote }}
         chdir: "{{ instance_path }}"
       changed_when: true
       ignore_errors: true  # nothing to commit if the gitlink was already current
@@ -185,24 +185,48 @@
       The checkout was not changed — pass --branch or --mw-version to pin the
       right release.
 
+# A failed `submodule add` (e.g. a -b branch the remote lacks) still leaves
+# the clone and its .git/modules entry behind; the clone would be symlinked
+# into the live wiki and block every later add of the same name.
 - name: "Add {{ _item_type }} as a gitops submodule"
   when: not _add_existing.stat.exists and is_gitops | bool
-  ansible.builtin.command:
-    cmd: >-
-      git -C {{ instance_path | quote }} submodule add
-      {{ ('-b ' ~ item.branch) if item.branch else '' }}
-      --
-      {{ item.repository | quote }}
-      {{ (_item_dir ~ '/' ~ item.name) | quote }}
-    chdir: "{{ instance_path }}"
-  changed_when: true
+  block:
+    - name: "Run git submodule add for {{ _item_type }} '{{ item.name }}'"
+      ansible.builtin.command:
+        cmd: >-
+          git -C {{ instance_path | quote }} submodule add
+          {{ ('-b ' ~ (item.branch | quote)) if item.branch else '' }}
+          --
+          {{ item.repository | quote }}
+          {{ (_item_dir ~ '/' ~ item.name) | quote }}
+        chdir: "{{ instance_path }}"
+      register: _submodule_add
+      changed_when: true
+  rescue:
+    - name: "Delete the partial checkout of '{{ item.name }}'"
+      ansible.builtin.file:
+        path: "{{ item_path }}"
+        state: absent
+      loop:
+        - "{{ instance_path }}/{{ _item_dir }}/{{ item.name }}"
+        - "{{ instance_path }}/.git/modules/{{ _item_dir }}/{{ item.name }}"
+      loop_control:
+        loop_var: item_path
+
+    - name: "Fail: could not add {{ _item_type }} '{{ item.name }}'"
+      ansible.builtin.fail:
+        msg: >-
+          git submodule add failed for {{ _item_type }} '{{ item.name }}'
+          from {{ item.repository }}
+          {{ ('(branch ' ~ item.branch ~ ')') if item.branch else '' }}:
+          {{ _submodule_add.stderr | default('') | trim }}
 
 - name: "Add {{ _item_type }} as a plain clone (non-gitops)"
   when: not _add_existing.stat.exists and not (is_gitops | bool)
   ansible.builtin.command:
     cmd: >-
       git -C {{ instance_path | quote }} clone
-      {{ ('-b ' ~ item.branch) if item.branch else '' }}
+      {{ ('-b ' ~ (item.branch | quote)) if item.branch else '' }}
       --
       {{ item.repository | quote }}
       {{ (_item_dir ~ '/' ~ item.name) | quote }}
@@ -223,7 +247,7 @@
   ansible.builtin.command:
     cmd: >-
       git -C {{ instance_path | quote }} -c commit.gpgsign=false commit
-      -m 'Add {{ _item_type }} {{ item.name }}'
+      -m {{ ('Add ' ~ _item_type ~ ' ' ~ item.name) | quote }}
     chdir: "{{ instance_path }}"
   changed_when: true
   register: _add_commit

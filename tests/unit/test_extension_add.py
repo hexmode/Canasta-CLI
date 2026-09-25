@@ -231,14 +231,27 @@ class TestComposerRequirements:
             "items shipping a composer.json must be registered in "
             "config/composer.local.json")
 
-    def test_uses_bind_mount_paths(self):
-        # instance_path/extensions maps to w/user-extensions; the
-        # w/extensions symlink does not exist until the next container
-        # start, so include paths must use the user- prefixed mount.
+    def test_uses_extensions_paths_not_the_bind_mount(self):
+        # Include paths go through w/extensions (or w/skins), never the
+        # user-extensions mount.
         text = open(ADD).read()
-        assert "'user-' ~ _item_dir" in text, (
-            "composer.local.json entries must reference the "
-            "user-extensions/user-skins bind mount")
+        assert "'user-' ~ _item_dir" not in text
+        assert "_item_dir ~ '/\\1/composer.json'" in text
+
+    def test_install_waits_for_the_monitor_link(self):
+        exec_cmds = [(t.get("vars") or {}).get("exec_command", "")
+                     for t in _walk(_load(ADD))]
+        install = [c for c in exec_cmds if "composer update" in c]
+        assert install and all('[ ! -e "$f" ]' in c for c in install)
+
+    def test_failed_install_reverts_only_what_this_run_added(self):
+        reverts = [t for t in _walk(_load(ADD))
+                   if (t.get("canasta_composer_local") or {}).get("state")
+                   == "absent"]
+        assert reverts
+        for t in reverts:
+            assert t["canasta_composer_local"]["include"] == (
+                "{{ _composer_local.added }}")
 
     def test_runs_composer_update_no_dev(self):
         exec_cmds = [(t.get("vars") or {}).get("exec_command", "")
@@ -264,3 +277,41 @@ class TestEnableOnce:
             if "enable.yml" in inc:
                 assert "loop" not in t, (
                     "enable must be called once with all names joined")
+
+
+class TestResolve:
+    def test_resolves_on_the_controller(self):
+        # The bundled snapshot is under canasta_root on the controller.
+        resolve = [t for t in _walk(_load(ADD))
+                   if "canasta_extension_resolve" in t]
+        assert resolve and all(t.get("delegate_to") == "localhost"
+                               for t in resolve)
+
+    def test_overrides_refused_with_several_names(self):
+        guard = [t for t in _walk(_load(ADD))
+                 if t.get("name") == "Refuse --repository/--branch with several names"]
+        assert guard and "ansible.builtin.fail" in guard[0]
+
+
+class TestFailedSubmoduleAdd:
+    def _submodule_block(self):
+        return next(t for t in _walk(_load(ADD_ONE))
+                    if t.get("name", "").startswith("Add {{ _item_type }} as a gitops submodule"))
+
+    def test_rescue_deletes_clone_and_module_metadata(self):
+        block = self._submodule_block()
+        assert "submodule add" in _cmd(block["block"][0])
+        paths = block["rescue"][0]["loop"]
+        assert any("/.git/modules/" in p for p in paths)
+        assert any(p.endswith("{{ _item_dir }}/{{ item.name }}")
+                   and ".git" not in p for p in paths)
+
+    def test_rescue_still_fails(self):
+        rescue = self._submodule_block()["rescue"]
+        assert "ansible.builtin.fail" in rescue[-1]
+
+    def test_branch_is_quoted(self):
+        for t in _walk(_load(ADD_ONE)):
+            cmd = _cmd(t)
+            if "-b " in cmd:
+                assert "item.branch | quote" in cmd
