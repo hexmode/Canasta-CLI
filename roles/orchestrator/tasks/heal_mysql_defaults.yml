@@ -11,6 +11,9 @@
 # (e.g. an external-DB MYSQL_HOST). Skipped entirely when
 # USE_EXTERNAL_DB=true, since those setups supply their own DB host.
 #
+# The Compose fast path (direct_commands/_helpers.py, _backfill_db_defaults)
+# sets the same keys; keep them in sync.
+#
 # Input: instance_path
 
 - name: Read USE_EXTERNAL_DB from .env

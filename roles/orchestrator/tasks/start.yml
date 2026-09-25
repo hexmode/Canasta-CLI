@@ -80,7 +80,7 @@
     # Backfill MYSQL_HOST/PORT/USER/SSL for instances created before
     # _env_update.yml began pinning them. Without these in .env,
     # podman-compose passes ${MYSQL_HOST:-db} literally and the web
-    # container hangs in wait-for-it.sh forever. See #1565.
+    # container hangs in wait-for-it.sh forever.
     - name: Backfill bundled DB MySQL defaults
       ansible.builtin.include_tasks: "{{ canasta_root }}/roles/orchestrator/tasks/heal_mysql_defaults.yml"
 
