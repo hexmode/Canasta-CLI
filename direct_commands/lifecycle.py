@@ -52,7 +52,10 @@ def cmd_start(args):
     if rc != 0:
         _helpers._dump_compose_failure(inst)
         return rc
-    return _helpers._wait_web_ready(inst_id, inst)
+    rc = _helpers._wait_web_ready(inst_id, inst)
+    if rc == 0:
+        _helpers._rootless_operator_chown(inst)
+    return rc
 
 
 @register("stop")
@@ -102,7 +105,10 @@ def cmd_restart(args):
     if rc != 0:
         _helpers._dump_compose_failure(inst)
         return rc
-    return _helpers._wait_web_ready(inst_id, inst)
+    rc = _helpers._wait_web_ready(inst_id, inst)
+    if rc == 0:
+        _helpers._rootless_operator_chown(inst)
+    return rc
 
 
 _SCALE_SUPPORTED_COMPONENTS = ("web",)
