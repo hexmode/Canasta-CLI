@@ -202,7 +202,12 @@
           - --filter
           - "label=com.docker.compose.project={{ instance_path | basename | lower }}"
           - --format
-          - '{% raw %}{{.Label "com.docker.compose.service"}}{% endraw %}'
+          - >-
+            {% if 'podman' in (_inspect_cmd | basename) -%}
+            {% raw %}{{index .Labels "com.docker.compose.service"}}{% endraw %}
+            {%- else -%}
+            {% raw %}{{.Label "com.docker.compose.service"}}{% endraw %}
+            {%- endif %}
         chdir: "{{ instance_path }}"
       register: _start_present_services
       changed_when: false
@@ -403,6 +408,15 @@
           race composer — check the container logs if create then fails
           on a missing vendor/ file.
       when: (_start_web_podman_ready.rc | default(0)) != 0
+
+    # Rootless Podman: run-all.sh rsyncs with --chown=www-data at container
+    # startup, which resets ownership of config/, extensions/, skins/ to the
+    # container's subuid. Re-apply the operator-writable directory ownership
+    # fix now that the containers have started and run-all.sh has run.
+    - name: Fix operator directory ownership for rootless Podman (post-start)
+      ansible.builtin.include_tasks: "{{ canasta_root }}/roles/orchestrator/tasks/_rootless_operator_chown.yml"
+      when:
+        - _inspect_cmd | default('docker') is search('podman')
 
     # Register CAPI + auto-enroll the bouncer when CrowdSec is on. Shared
     # with the K8s start path and create. crowdsec_autoenroll is false only

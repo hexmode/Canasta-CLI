@@ -834,6 +834,52 @@ def _wait_web_ready(inst_id, inst):
     return 0
 
 
+# (path relative to the instance, recurse). Keep in sync with
+# roles/orchestrator/tasks/_rootless_operator_chown.yml.
+_ROOTLESS_OPERATOR_DIRS = (
+    ("config", False),
+    ("config/settings", True),
+    ("public_assets", True),
+    ("extensions", True),
+    ("skins", True),
+)
+
+
+def _rootless_operator_chown(inst):
+    """Hand the operator-managed directories back to the operator on
+    rootless Podman.
+
+    The web container's startup rsync re-owns config/, extensions/ and
+    skins/ to www-data, which rootless Podman maps to a host subuid, so
+    every start locks the operator out of them again. Inside
+    `podman unshare` namespace root is the operator. Directories the
+    containers write into (images/, config/persistent, ...) are left alone.
+    """
+    if "podman" not in _resolve_inspect_cmd(inst):
+        return
+    rc, out = _runtime_capture(inst, [
+        "podman", "info", "--format", "{{.Host.Security.Rootless}}",
+    ])
+    if rc != 0 or out.strip() != "true":
+        return
+    path = inst.get("path", "")
+    script = " ".join(
+        "[ ! -d %s ] || chown %s0:0 %s;" % (q, "-R " if recurse else "", q)
+        for q, recurse in (
+            (_shell_quote(os.path.join(path, rel)), recurse)
+            for rel, recurse in _ROOTLESS_OPERATOR_DIRS
+        )
+    )
+    rc, _ = _runtime_capture(inst, ["podman", "unshare", "sh", "-c", script])
+    if rc != 0:
+        print(
+            "Warning: could not return %s/{config,extensions,skins,...} to "
+            "the operator; they may stay owned by the container's subuid."
+            % path,
+            file=sys.stderr,
+        )
+
+
 def _k8s_namespace(instance_id):
     return "canasta-%s" % instance_id
 
@@ -1480,6 +1526,14 @@ def _capture_in_instance(path, host, docker_host, argv,
     return stdout if rc == 0 else None
 
 
+# Podman 4 has no .Label template method, and Docker's .Labels is a
+# string that index cannot read.
+_PS_SERVICE_FORMAT = {
+    "podman": '{{index .Labels "com.docker.compose.service"}}',
+    "docker": '{{.Label "com.docker.compose.service"}}',
+}
+
+
 def _missing_profile_services(inst, compose_cmd=None):
     """Services the active COMPOSE_PROFILES imply that are not running.
 
@@ -1512,7 +1566,7 @@ def _missing_profile_services(inst, compose_cmd=None):
         [runtime, "ps", "--filter", "status=running",
          "--filter",
          "label=com.docker.compose.project=%s" % _compose_project(path),
-         "--format", '{{.Label "com.docker.compose.service"}}'],
+         "--format", _PS_SERVICE_FORMAT[runtime]],
     )
     return sorted(set(expected.split()) - set((running or "").split()))
 
