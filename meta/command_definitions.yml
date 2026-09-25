@@ -1445,13 +1445,14 @@ commands:
   - name: extension_remove
     description: "Remove a previously added non-bundled extension"
     long_description: |
-      Undo `canasta extension add`: disables the extension in settings.yaml,
+      Undo `canasta extension add`: disables the extension in the global and every
+      wiki's settings.yaml,
       deletes its directory from the instance's extensions/ directory (on a
       gitops instance, deinit and unregister the submodule and clean up
       .git/modules), unregisters its composer.json from
       config/composer.local.json and re-runs `composer update --no-dev`,
-      commits the removal (gitops), and restarts the containers so the
-      removal takes effect.
+      commits the removal (gitops), and starts the containers if they are
+      stopped.
 
       Names not present under extensions/ are reported and skipped. Database
       tables created by the removed extension are left in place — MediaWiki
@@ -1459,17 +1460,13 @@ commands:
       to distribute a gitops removal to other hosts.
     examples:
       - "canasta extension remove MyExtension"
-      - "canasta extension remove OAuth,Cite"
+      - "canasta extension remove MyExtension,OtherExtension"
     playbook: extension_remove.yml
     parameters:
       - name: id
         short: i
         type: string
         description: "Canasta instance ID"
-      - name: wiki
-        short: w
-        type: string
-        description: "Wiki ID to disable the extension for (passed to settings)"
       - name: names
         type: string
         positional: true
@@ -1479,13 +1476,14 @@ commands:
   - name: skin_remove
     description: "Remove a previously added non-bundled skin"
     long_description: |
-      Undo `canasta skin add`: disables the skin in settings.yaml,
+      Undo `canasta skin add`: disables the skin in the global and every
+      wiki's settings.yaml,
       deletes its directory from the instance's skins/ directory (on a
       gitops instance, deinit and unregister the submodule and clean up
       .git/modules), unregisters its composer.json from
       config/composer.local.json and re-runs `composer update --no-dev`,
-      commits the removal (gitops), and restarts the containers so the
-      removal takes effect.
+      commits the removal (gitops), and starts the containers if they are
+      stopped.
 
       Names not present under skins/ are reported and skipped. Run
       `canasta gitops push` afterwards to distribute a gitops removal to
@@ -1499,10 +1497,6 @@ commands:
         short: i
         type: string
         description: "Canasta instance ID"
-      - name: wiki
-        short: w
-        type: string
-        description: "Wiki ID to disable the skin for (passed to settings)"
       - name: names
         type: string
         positional: true
@@ -1558,7 +1552,7 @@ commands:
 
       The extension's git URL is resolved from ExtensionJson.json (the
       extjsonuploader Toolforge dataset); pass `--repository` to override the
-      lookup, or `--branch` to pin a specific branch/tag/commit. The branch is
+      lookup, or `--branch` to pin a specific branch. The branch is
       chosen automatically as REL1_YY matching the instance's MediaWiki
       version (e.g. MediaWiki 1.43 -> REL1_43), tried on every remote (GitHub
       and GitLab mirrors carry the same REL branches); if the REL branch does
@@ -1600,10 +1594,10 @@ commands:
         description: "MediaWiki version (e.g. 1.43.2); overrides auto-detection for REL1_YY branch selection"
       - name: repository
         type: string
-        description: "Git URL to clone (overrides ExtensionJson.json lookup)"
+        description: "Git URL to clone (overrides ExtensionJson.json lookup); only with a single name"
       - name: branch
         type: string
-        description: "Branch/tag/commit to check out (overrides auto branch selection)"
+        description: "Branch to check out (overrides auto branch selection); only with a single name"
       - name: skip_enable
         type: bool
         default: false
@@ -1698,7 +1692,7 @@ commands:
 
       The skin's git URL is resolved from ExtensionJson.json (the
       extjsonuploader Toolforge dataset); pass `--repository` to override the
-      lookup, or `--branch` to pin a specific branch/tag/commit. The branch is
+      lookup, or `--branch` to pin a specific branch. The branch is
       chosen automatically as REL1_YY matching the instance's MediaWiki
       version (e.g. MediaWiki 1.43 -> REL1_43), tried on every remote (GitHub
       and GitLab mirrors carry the same REL branches); if the REL branch does
@@ -1739,10 +1733,10 @@ commands:
         description: "MediaWiki version (e.g. 1.43.2); overrides auto-detection for REL1_YY branch selection"
       - name: repository
         type: string
-        description: "Git URL to clone (overrides ExtensionJson.json lookup)"
+        description: "Git URL to clone (overrides ExtensionJson.json lookup); only with a single name"
       - name: branch
         type: string
-        description: "Branch/tag/commit to check out (overrides auto branch selection)"
+        description: "Branch to check out (overrides auto branch selection); only with a single name"
       - name: skip_enable
         type: bool
         default: false
