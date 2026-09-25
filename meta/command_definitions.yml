@@ -2790,11 +2790,11 @@ commands:
       - name: key
         type: path
         description: >-
-          Compose only, and only for symmetric git-crypt repos: path to the
-          git-crypt symmetric key file exported by `canasta gitops init`.
-          GPG-initialized repos unlock automatically via a forwarded GPG
-          agent (auto-detected from the cloned repo), so --key is not needed
-          for them. On K8s, git-crypt is not part of the gitops flow.
+          Compose: path to the git-crypt symmetric key file exported by
+          `canasta gitops init`. It unlocks any git-crypt repo; it may be
+          omitted for a repo with GPG recipients, which is then unlocked
+          through a forwarded GPG agent. Kubernetes: required, the basename
+          of the SSH deploy key (<key>.ssh).
       - name: ssh_key
         type: path
         description: >-
@@ -2895,10 +2895,9 @@ commands:
       - name: key
         type: path
         description: >-
-          Compose only. Path to the git-crypt symmetric key for unlocking
-          encrypted vars when the repo was initialized in symmetric mode
-          (not GPG mode). Not needed for GPG-initialized repos, which
-          unlock via a forwarded GPG agent.
+          Compose only. Path to the git-crypt symmetric key, used to unlock
+          the checkout if it is locked. Without it, a repo with GPG
+          recipients is unlocked through a forwarded GPG agent.
 
   - name: gitops_pull
     description: "Pull latest configuration from the git repository"
@@ -2925,10 +2924,9 @@ commands:
       - name: key
         type: path
         description: >-
-          Compose only. Path to the git-crypt symmetric key for unlocking
-          encrypted vars when the repo was initialized in symmetric mode
-          (not GPG mode). Not needed for GPG-initialized repos, which
-          unlock via a forwarded GPG agent.
+          Compose only. Path to the git-crypt symmetric key, used to unlock
+          the checkout if it is locked. Without it, a repo with GPG
+          recipients is unlocked through a forwarded GPG agent.
 
   - name: gitops_status
     description: "Show gitops status for the instance"

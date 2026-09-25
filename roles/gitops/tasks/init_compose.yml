@@ -227,10 +227,13 @@
 # GPG mode: register the GPG recipient instead of exporting a symmetric key.
 # Later unlock (join/push/pull) happens via `git-crypt unlock` with a
 # forwarded GPG agent, so no shared key file is needed.
+# add-gpg-user commits the encrypted key under .git-crypt/, and the
+# recipient's public key must already be in the target's keyring.
 - name: Add GPG recipient to git-crypt (GPG mode)
   ansible.builtin.command:
-    cmd: "git-crypt add-gpg-user -y {{ git_crypt_gpg_user }}"
+    argv: [git-crypt, add-gpg-user, "{{ git_crypt_gpg_user }}"]
     chdir: "{{ instance_path }}"
+  environment: "{{ gitops_git_env }}"
   changed_when: true
   when: git_crypt_gpg_user | default('')
 
@@ -423,12 +426,18 @@
 
 # Verify before announcing: the message named a path the file may not be
 # at, and the loss stays invisible until a join or a rebuild needs it.
+# GPG mode exports no key file.
 - name: Verify the git-crypt key reached the requested path
   ansible.builtin.include_tasks: _verify_exported_key.yml
   vars:
     _exported_key_path: "{{ key }}"
     _exported_key_label: "git-crypt key"
+  when: not git_crypt_gpg_user | default('')
 
 - name: Report gitops initialized
   ansible.builtin.debug:
-    msg: "GitOps initialized for '{{ instance_id }}'. Key exported to {{ key }}"
+    msg: >-
+      GitOps initialized for '{{ instance_id }}'.
+      {{ ('git-crypt key encrypted to GPG recipient ' ~ git_crypt_gpg_user)
+         if git_crypt_gpg_user | default('')
+         else ('Key exported to ' ~ key) }}
